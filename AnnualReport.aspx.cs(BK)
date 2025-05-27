@@ -3,69 +3,37 @@ using System.Collections.Generic;
 using System.Data;
 using System.Linq;
 using System.Web.Services;
-using OfficeOpenXml;      // 需先以 NuGet 安裝 EPPlus
+using OfficeOpenXml;
 using System.IO;
 
-namespace WebApp
+namespace CRM
 {
-    public partial class AnnualReport : System.Web.UI.Page
+    public partial class AnnualReport1 : System.Web.UI.Page
     {
-        /* ===== WebMethod：AJAX 取數 ===== */
+        /* ========= AJAX WebMethod ========= */
         [WebMethod]
-        public static List<Dictionary<string, object>> GetReportData(
-            string department, string business, string region, int[] yearList,
-            string customer, string custItem, string substrate,
-            string productType, string shipTo, string realDate,
-            string status, string orderType)
+        public static List<Dictionary<string, object>> GetReportData(int[] yearList)
         {
-            DateTime? realDateVal = null;
-            if (!string.IsNullOrEmpty(realDate))
-                realDateVal = DateTime.ParseExact(realDate, "yyyy/MM/dd", null);
+            // 其餘查詢參數略，僅示範
+            var dt = BuildTestData(yearList ?? new[] { 2023, 2024, 2025 });
 
-            DataTable dt = FetchReportData(
-                department, business, region, yearList ?? new int[0],
-                customer, custItem, substrate,
-                productType, shipTo, realDateVal, status, orderType);
-
-            // DataTable → List<Dictionary> 方便 JSON 序列化
-            var list = new List<Dictionary<string, object>>();
-            foreach (DataRow row in dt.Rows)
-            {
-                var dict = new Dictionary<string, object>();
-                foreach (DataColumn col in dt.Columns)
-                    dict[col.ColumnName] = row[col];
-                list.Add(dict);
-            }
-            return list;
+            return dt.AsEnumerable()
+                     .Select(r => dt.Columns.Cast<DataColumn>()
+                         .ToDictionary(c => c.ColumnName, c => r[c]))
+                     .ToList();
         }
 
-        /* ===== 匯出 Excel 按鈕 ===== */
+        /* ========= 匯出 Excel ========= */
         protected void btnExport_Click(object sender, EventArgs e)
         {
-            // 透過 Request.Form 取值（與 AJAX 參數一致）
-            int[] years = Request.Form.GetValues("year")?
-                             .Select(int.Parse).ToArray() ?? new int[0];
+            int[] years = Request.Form.GetValues("year")?.Select(int.Parse).ToArray()
+                          ?? new[] { 2024, 2025 };
+            var dt = BuildTestData(years);
 
-            DataTable dt = FetchReportData(
-                Request.Form["ddlDept"],
-                Request.Form["ddlBiz"],
-                Request.Form["ddlRegion"],
-                years,
-                Request.Form["ddlCustomer"],
-                Request.Form["txtCustItem"],
-                Request.Form["ddlSubstrate"],
-                Request.Form["ddlProductType"],
-                Request.Form["txtShipTo"],
-                DateTime.TryParse(Request.Form["txtRealDate"], out DateTime rd) ? (DateTime?)rd : null,
-                Request.Form["ddlStatus"],
-                Request.Form["ddlOrderType"]
-            );
-
-            // ===== 使用 EPPlus 產出 .xlsx =====
             ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
-            using (var pck = new ExcelPackage())
+            using (var p = new ExcelPackage())
             {
-                var ws = pck.Workbook.Worksheets.Add("Report");
+                var ws = p.Workbook.Worksheets.Add("Report");
                 ws.Cells["A1"].LoadFromDataTable(dt, true);
                 ws.Cells[ws.Dimension.Address].AutoFitColumns();
 
@@ -74,73 +42,87 @@ namespace WebApp
                 Response.AddHeader("Content-Disposition", "attachment; filename=AnnualReport.xlsx");
                 using (var ms = new MemoryStream())
                 {
-                    pck.SaveAs(ms);
+                    p.SaveAs(ms);
                     ms.WriteTo(Response.OutputStream);
                 }
                 Response.End();
             }
         }
 
-        /* ===== 取數核心：實務上請改為資料庫查詢 ===== */
-        private static DataTable FetchReportData(
-            string dept, string biz, string region, int[] years,
-            string customer, string custItem, string substrate,
-            string productType, string shipTo, DateTime? realDate,
-            string status, string orderType)
+        /* ========= 測試資料 (20 筆) ========= */
+        private static DataTable BuildTestData(int[] years)
         {
-            // === 此處示範用假資料，請自行改為 SQL / SP 取數 ===
-            DataTable dt = new DataTable();
-
-            // 靜態欄
-            dt.Columns.AddRange(new[] {
-                new DataColumn("Thk1", typeof(double)),
-                new DataColumn("Thk2", typeof(double)),
-                new DataColumn("Thk3", typeof(double)),
-                new DataColumn("Res1", typeof(int)),
-                new DataColumn("Res2", typeof(int)),
-                new DataColumn("Res3", typeof(int))
-            });
+            var dt = new DataTable();
+            // 12 固定欄
+            dt.Columns.Add("Customer", typeof(string));
+            dt.Columns.Add("Inch", typeof(string));
+            dt.Columns.Add("CustItem", typeof(string));
+            dt.Columns.Add("OAItem", typeof(string));
+            dt.Columns.Add("Substrate", typeof(string));
+            dt.Columns.Add("Price", typeof(double));
+            dt.Columns.Add("Thk1", typeof(double));
+            dt.Columns.Add("Res1", typeof(int));
+            dt.Columns.Add("Thk2", typeof(double));
+            dt.Columns.Add("Res2", typeof(int));
+            dt.Columns.Add("Thk3", typeof(double));
+            dt.Columns.Add("Res3", typeof(int));
 
             // 動態年度欄
-            string[] months = { "Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec" };
+            string[] m = { "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
             foreach (int y in years.OrderBy(x => x))
             {
-                foreach (string m in months)       dt.Columns.Add($"{y}_{m}", typeof(double));
+                foreach (string mon in m) dt.Columns.Add($"{y}_{mon}", typeof(double));
                 dt.Columns.Add($"{y}_Q1_Total", typeof(double));
                 dt.Columns.Add($"{y}_Q2_Total", typeof(double));
                 dt.Columns.Add($"{y}_Q3_Total", typeof(double));
                 dt.Columns.Add($"{y}_Q4_Total", typeof(double));
-                dt.Columns.Add($"{y}_Total",      typeof(double));
+                dt.Columns.Add($"{y}_Total", typeof(double));
             }
 
-            // ------ 假資料列 1 ------
-            DataRow r1 = dt.NewRow();
-            r1["Thk1"] = 1.2; r1["Thk2"] = 1.4; r1["Thk3"] = 1.6;
-            r1["Res1"] = 100; r1["Res2"] = 110; r1["Res3"] = 120;
-            foreach (int y in years)
+            // 產生 20 筆示範資料
+            var rnd = new Random(10);
+            for (int i = 1; i <= 20; i++)
             {
-                r1[$"{y}_Jan"] = 10;  r1[$"{y}_Feb"] = 15;  r1[$"{y}_Mar"] = 20;  r1[$"{y}_Q1_Total"] = 45;
-                r1[$"{y}_Apr"] = 12;  r1[$"{y}_May"] = 18;  r1[$"{y}_Jun"] = 22;  r1[$"{y}_Q2_Total"] = 52;
-                r1[$"{y}_Jul"] = 14;  r1[$"{y}_Aug"] = 19;  r1[$"{y}_Sep"] = 24;  r1[$"{y}_Q3_Total"] = 57;
-                r1[$"{y}_Oct"] = 16;  r1[$"{y}_Nov"] = 20;  r1[$"{y}_Dec"] = 25;  r1[$"{y}_Q4_Total"] = 61;
-                r1[$"{y}_Total"] = 215;
-            }
-            dt.Rows.Add(r1);
+                var r = dt.NewRow();
+                r["Customer"] = $"Cust{(i % 3) + 1}";
+                r["Inch"] = $"{6 + (i % 3)}\"";
+                r["CustItem"] = $"CI{(i % 5) + 1}";
+                r["OAItem"] = $"OA{(i % 4) + 1}";
+                r["Substrate"] = (i % 2 == 0) ? "SubA" : "SubB";
+                r["Price"] = 100 + 5 * i;
+                r["Thk1"] = 1.0 + 0.1 * (i % 5); r["Thk2"] = 1.2 + 0.1 * (i % 5); r["Thk3"] = 1.4 + 0.1 * (i % 5);
+                r["Res1"] = 80 + i; r["Res2"] = 90 + i; r["Res3"] = 100 + i;
 
-            // ------ 假資料列 2 ------
-            DataRow r2 = dt.NewRow();
-            r2["Thk1"] = 0.8; r2["Thk2"] = 1.0; r2["Thk3"] = 1.1;
-            r2["Res1"] = 80;  r2["Res2"] = 85;  r2["Res3"] = 90;
-            foreach (int y in years)
-            {
-                r2[$"{y}_Jan"] = 5;   r2[$"{y}_Feb"] = 6;   r2[$"{y}_Mar"] = 7;   r2[$"{y}_Q1_Total"] = 18;
-                r2[$"{y}_Apr"] = 6;   r2[$"{y}_May"] = 7;   r2[$"{y}_Jun"] = 8;   r2[$"{y}_Q2_Total"] = 21;
-                r2[$"{y}_Jul"] = 7;   r2[$"{y}_Aug"] = 8;   r2[$"{y}_Sep"] = 9;   r2[$"{y}_Q3_Total"] = 24;
-                r2[$"{y}_Oct"] = 8;   r2[$"{y}_Nov"] = 9;   r2[$"{y}_Dec"] =10;   r2[$"{y}_Q4_Total"] = 27;
-                r2[$"{y}_Total"] = 90;
-            }
-            dt.Rows.Add(r2);
+                foreach (int y in years)
+                {
+                    double baseVal = rnd.Next(10, 30);
+                    r[$"{y}_Jan"] = baseVal;
+                    r[$"{y}_Feb"] = baseVal + 1;
+                    r[$"{y}_Mar"] = baseVal + 2;
+                    r[$"{y}_Q1_Total"] = baseVal * 3 + 3;
 
+                    r[$"{y}_Apr"] = baseVal + 3;
+                    r[$"{y}_May"] = baseVal + 4;
+                    r[$"{y}_Jun"] = baseVal + 5;
+                    r[$"{y}_Q2_Total"] = baseVal * 3 + 12;
+
+                    r[$"{y}_Jul"] = baseVal + 6;
+                    r[$"{y}_Aug"] = baseVal + 7;
+                    r[$"{y}_Sep"] = baseVal + 8;
+                    r[$"{y}_Q3_Total"] = baseVal * 3 + 21;
+
+                    r[$"{y}_Oct"] = baseVal + 9;
+                    r[$"{y}_Nov"] = baseVal + 10;
+                    r[$"{y}_Dec"] = baseVal + 11;
+                    r[$"{y}_Q4_Total"] = baseVal * 3 + 30;
+
+                    r[$"{y}_Total"] = (double)r[$"{y}_Q1_Total"] +
+                                     (double)r[$"{y}_Q2_Total"] +
+                                     (double)r[$"{y}_Q3_Total"] +
+                                     (double)r[$"{y}_Q4_Total"];
+                }
+                dt.Rows.Add(r);
+            }
             return dt;
         }
     }
