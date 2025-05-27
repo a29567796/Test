@@ -1,243 +1,147 @@
 using System;
 using System.Collections.Generic;
 using System.Data;
-using System.Web.Script.Serialization;
+using System.Linq;
 using System.Web.Services;
-using System.Web.UI;
-using System.Web.UI.WebControls;
+using OfficeOpenXml;      // 需先以 NuGet 安裝 EPPlus
+using System.IO;
 
-public partial class AnnualReport : System.Web.UI.Page
+namespace WebApp
 {
-    // 共用的查詢資料方法
-    private static DataTable FetchReportData(string dept, string biz, string region, int[] years, 
-                                            string customer, string custItem, string substrate, 
-                                            string productType, string shipTo, DateTime? realDate, 
-                                            string status, string orderType)
+    public partial class AnnualReport : System.Web.UI.Page
     {
-        // TODO: 根據參數從資料庫查詢並返回 DataTable
-        // 這裡可調用儲存程序，執行PIVOT等，使DataTable欄位為 動態年份X月份/合計
-        DataTable dt = new DataTable();
-        // （示意：加入欄位，如 "2022_Jan", "2022_Feb", ..., "2022_Total", etc）
-        // ...
-        return dt;
-    }
-
-    [WebMethod]
-    public static List<Dictionary<string, object>> GetReportData(string department, string business, string region, int[] yearList,
-            string customer, string custItem, string substrate, string productType, string shipTo, string realDate, string status, string orderType)
-    {
-        DateTime? realDateVal = null;
-        if (!string.IsNullOrEmpty(realDate))
-            realDateVal = DateTime.ParseExact(realDate, "yyyy/MM/dd", null);
-        // 調用共用方法取回 DataTable
-        DataTable dt = FetchReportData(department, business, region, yearList ?? new int[0],
-                                       customer, custItem, substrate, productType, shipTo, realDateVal, status, orderType);
-        // 將 DataTable 轉成 List<Dictionary> 以利 JSON 序列化
-        var resultList = new List<Dictionary<string, object>>();
-        foreach (DataRow dr in dt.Rows)
+        /* ===== WebMethod：AJAX 取數 ===== */
+        [WebMethod]
+        public static List<Dictionary<string, object>> GetReportData(
+            string department, string business, string region, int[] yearList,
+            string customer, string custItem, string substrate,
+            string productType, string shipTo, string realDate,
+            string status, string orderType)
         {
-            var rowDict = new Dictionary<string, object>();
-            foreach (DataColumn col in dt.Columns)
+            DateTime? realDateVal = null;
+            if (!string.IsNullOrEmpty(realDate))
+                realDateVal = DateTime.ParseExact(realDate, "yyyy/MM/dd", null);
+
+            DataTable dt = FetchReportData(
+                department, business, region, yearList ?? new int[0],
+                customer, custItem, substrate,
+                productType, shipTo, realDateVal, status, orderType);
+
+            // DataTable → List<Dictionary> 方便 JSON 序列化
+            var list = new List<Dictionary<string, object>>();
+            foreach (DataRow row in dt.Rows)
             {
-                rowDict[col.ColumnName] = dr[col];
+                var dict = new Dictionary<string, object>();
+                foreach (DataColumn col in dt.Columns)
+                    dict[col.ColumnName] = row[col];
+                list.Add(dict);
             }
-            resultList.Add(rowDict);
+            return list;
         }
-        return resultList;
-    }
 
-    protected void btnExport_Click(object sender, EventArgs e)
-    {
-        // 從前端控制項獲取目前的查詢條件值
-        string dept = Request.Form["ddlDept"];      // 或直接用 ddlDept.SelectedValue
-        string biz = Request.Form["ddlBiz"];
-        string region = Request.Form["ddlRegion"];
-        string[] yearsStr = Request.Form.GetValues("ddlYear"); // 多選值陣列
-        int[] years = yearsStr?.Select(int.Parse).ToArray() ?? new int[0];
-        string customer = Request.Form["txtCustomer"];
-        string custItem = Request.Form["txtCustItem"];
-        string substrate = Request.Form["ddlSubstrate"];
-        string productType = Request.Form["ddlProductType"];
-        string shipTo = Request.Form["txtShipTo"];
-        string realDateStr = Request.Form["txtRealDate"];
-        DateTime? realDateVal = null;
-        if (!string.IsNullOrEmpty(realDateStr))
-            realDateVal = DateTime.ParseExact(realDateStr, "yyyy/MM/dd", null);
-        string status = Request.Form["ddlStatus"];
-        string orderType = Request.Form["ddlOrderType"];
-
-        // 重新取得報表資料
-        DataTable dt = FetchReportData(dept, biz, region, years, customer, custItem, substrate, productType, shipTo, realDateVal, status, orderType);
-
-        // 使用 EPPlus 將 DataTable 匯出為 Excel 檔
-        using (ExcelPackage pck = new ExcelPackage())
+        /* ===== 匯出 Excel 按鈕 ===== */
+        protected void btnExport_Click(object sender, EventArgs e)
         {
+            // 透過 Request.Form 取值（與 AJAX 參數一致）
+            int[] years = Request.Form.GetValues("year")?
+                             .Select(int.Parse).ToArray() ?? new int[0];
+
+            DataTable dt = FetchReportData(
+                Request.Form["ddlDept"],
+                Request.Form["ddlBiz"],
+                Request.Form["ddlRegion"],
+                years,
+                Request.Form["ddlCustomer"],
+                Request.Form["txtCustItem"],
+                Request.Form["ddlSubstrate"],
+                Request.Form["ddlProductType"],
+                Request.Form["txtShipTo"],
+                DateTime.TryParse(Request.Form["txtRealDate"], out DateTime rd) ? (DateTime?)rd : null,
+                Request.Form["ddlStatus"],
+                Request.Form["ddlOrderType"]
+            );
+
+            // ===== 使用 EPPlus 產出 .xlsx =====
             ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
-            ExcelWorksheet ws = pck.Workbook.Worksheets.Add("Report");
-            ws.Cells["A1"].LoadFromDataTable(dt, true);
-            ws.Cells.AutoFitColumns();
-            Response.Clear();
-            Response.ContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
-            Response.AddHeader("Content-Disposition", "attachment; filename=AnnualReport.xlsx");
-            // 將 ExcelPackage 寫入輸出流
-            using (var ms = new MemoryStream())
+            using (var pck = new ExcelPackage())
             {
-                pck.SaveAs(ms);
-                ms.WriteTo(Response.OutputStream);
+                var ws = pck.Workbook.Worksheets.Add("Report");
+                ws.Cells["A1"].LoadFromDataTable(dt, true);
+                ws.Cells[ws.Dimension.Address].AutoFitColumns();
+
+                Response.Clear();
+                Response.ContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+                Response.AddHeader("Content-Disposition", "attachment; filename=AnnualReport.xlsx");
+                using (var ms = new MemoryStream())
+                {
+                    pck.SaveAs(ms);
+                    ms.WriteTo(Response.OutputStream);
+                }
+                Response.End();
             }
-            Response.End();
         }
-    }
-}
-    // Excel 匯出按鈕事件處理：將完整報表資料輸出成 Excel 檔案
-    protected void btnExport_Click(object sender, EventArgs e)
-    {
-        // 從表單取得當前查詢條件值（與前端相同，使用 Request.Form）
-        string dept = Request.Form["deptSelect"];
-        string business = Request.Form["businessSelect"];
-        string region = Request.Form["regionSelect"];
-        string[] yearValues = Request.Form.GetValues("year"); // 取得多選年份陣列
-        int[] years = Array.ConvertAll(yearValues ?? new string[0], int.Parse);
-        string customer = Request.Form["customerSelect"];
-        string custItem = Request.Form["itemSelect"];
-        string substrate = Request.Form["substrateSelect"];
 
-        // 生成完整 DataTable 資料
-        DataTable dt = BuildReportData(dept, business, region, years, customer, custItem, substrate);
-
-        // 綁定 GridView 並匯出為 Excel
-        GridView gv = new GridView();
-        gv.DataSource = dt;
-        gv.DataBind();
-
-        // 清除響應並設定輸出格式為 Excel 檔案
-        Response.ClearContent();
-        Response.Buffer = true;
-        Response.AddHeader("content-disposition", "attachment; filename=AnnualReport.xls");
-        Response.ContentType = "application/vnd.ms-excel";
-        Response.Charset = "UTF-8";
-        // 注意：使用 HTML 輸出 Excel 可能會有格式警告12
-
-        System.IO.StringWriter sw = new System.IO.StringWriter();
-        HtmlTextWriter htw = new HtmlTextWriter(sw);
-        // 將 GridView (HTML 表格) 寫入 HtmlTextWriter
-        gv.RenderControl(htw);
-        // 輸出到回應流
-        Response.Write(sw.ToString());
-        Response.End();
-    }
-
-    // 為允許 GridView.RenderControl 匯出，需覆寫此方法
-    public override void VerifyRenderingInServerForm(Control control)
-    {
-        // 不做任何處理，僅用來繞過 ASP.NET 檢查
-        // (GridView 匯出 Excel 需要此覆寫)
-    }
-
-    /// <summary>
-    /// 根據查詢條件建立報表 DataTable，動態加入所選年份的欄位並合併資料。
-    /// （此函式模擬資料來源，實際應改為從資料庫查詢填充）
-    /// </summary>
-    private static DataTable BuildReportData(string dept, string business, string region, int[] years, string customer, string custItem, string substrate)
-    {
-        DataTable dt = new DataTable();
-        // 定義靜態欄位結構
-        dt.Columns.Add("部門", typeof(string));
-        dt.Columns.Add("業務", typeof(string));
-        dt.Columns.Add("區域", typeof(string));
-        dt.Columns.Add("客戶", typeof(string));
-        dt.Columns.Add("Cust Item", typeof(string));
-        dt.Columns.Add("Substrate", typeof(string));
-        dt.Columns.Add("Thk1", typeof(double));
-        dt.Columns.Add("Thk2", typeof(double));
-        dt.Columns.Add("Thk3", typeof(double));
-        dt.Columns.Add("Res1", typeof(int));
-        dt.Columns.Add("Res2", typeof(int));
-        dt.Columns.Add("Res3", typeof(int));
-        // 排序年份，確保欄位順序一致
-        Array.Sort(years);
-        // 動態定義每個年份的欄位 (每年 12個月 + 4個季度合計 + 年總計 = 17 欄)
-        string[] months = new string[] { "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
-        foreach (int year in years)
+        /* ===== 取數核心：實務上請改為資料庫查詢 ===== */
+        private static DataTable FetchReportData(
+            string dept, string biz, string region, int[] years,
+            string customer, string custItem, string substrate,
+            string productType, string shipTo, DateTime? realDate,
+            string status, string orderType)
         {
-            // 每月欄位
-            foreach (string m in months)
+            // === 此處示範用假資料，請自行改為 SQL / SP 取數 ===
+            DataTable dt = new DataTable();
+
+            // 靜態欄
+            dt.Columns.AddRange(new[] {
+                new DataColumn("Thk1", typeof(double)),
+                new DataColumn("Thk2", typeof(double)),
+                new DataColumn("Thk3", typeof(double)),
+                new DataColumn("Res1", typeof(int)),
+                new DataColumn("Res2", typeof(int)),
+                new DataColumn("Res3", typeof(int))
+            });
+
+            // 動態年度欄
+            string[] months = { "Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec" };
+            foreach (int y in years.OrderBy(x => x))
             {
-                dt.Columns.Add(m + "_" + year, typeof(double));
+                foreach (string m in months)       dt.Columns.Add($"{y}_{m}", typeof(double));
+                dt.Columns.Add($"{y}_Q1_Total", typeof(double));
+                dt.Columns.Add($"{y}_Q2_Total", typeof(double));
+                dt.Columns.Add($"{y}_Q3_Total", typeof(double));
+                dt.Columns.Add($"{y}_Q4_Total", typeof(double));
+                dt.Columns.Add($"{y}_Total",      typeof(double));
             }
-            // 每季合計欄位 Q1~Q4
-            for (int q = 1; q <= 4; q++)
+
+            // ------ 假資料列 1 ------
+            DataRow r1 = dt.NewRow();
+            r1["Thk1"] = 1.2; r1["Thk2"] = 1.4; r1["Thk3"] = 1.6;
+            r1["Res1"] = 100; r1["Res2"] = 110; r1["Res3"] = 120;
+            foreach (int y in years)
             {
-                dt.Columns.Add("Q" + q + "_" + year, typeof(double));
+                r1[$"{y}_Jan"] = 10;  r1[$"{y}_Feb"] = 15;  r1[$"{y}_Mar"] = 20;  r1[$"{y}_Q1_Total"] = 45;
+                r1[$"{y}_Apr"] = 12;  r1[$"{y}_May"] = 18;  r1[$"{y}_Jun"] = 22;  r1[$"{y}_Q2_Total"] = 52;
+                r1[$"{y}_Jul"] = 14;  r1[$"{y}_Aug"] = 19;  r1[$"{y}_Sep"] = 24;  r1[$"{y}_Q3_Total"] = 57;
+                r1[$"{y}_Oct"] = 16;  r1[$"{y}_Nov"] = 20;  r1[$"{y}_Dec"] = 25;  r1[$"{y}_Q4_Total"] = 61;
+                r1[$"{y}_Total"] = 215;
             }
-            // 年度總計欄位
-            dt.Columns.Add("Total_" + year, typeof(double));
+            dt.Rows.Add(r1);
+
+            // ------ 假資料列 2 ------
+            DataRow r2 = dt.NewRow();
+            r2["Thk1"] = 0.8; r2["Thk2"] = 1.0; r2["Thk3"] = 1.1;
+            r2["Res1"] = 80;  r2["Res2"] = 85;  r2["Res3"] = 90;
+            foreach (int y in years)
+            {
+                r2[$"{y}_Jan"] = 5;   r2[$"{y}_Feb"] = 6;   r2[$"{y}_Mar"] = 7;   r2[$"{y}_Q1_Total"] = 18;
+                r2[$"{y}_Apr"] = 6;   r2[$"{y}_May"] = 7;   r2[$"{y}_Jun"] = 8;   r2[$"{y}_Q2_Total"] = 21;
+                r2[$"{y}_Jul"] = 7;   r2[$"{y}_Aug"] = 8;   r2[$"{y}_Sep"] = 9;   r2[$"{y}_Q3_Total"] = 24;
+                r2[$"{y}_Oct"] = 8;   r2[$"{y}_Nov"] = 9;   r2[$"{y}_Dec"] =10;   r2[$"{y}_Q4_Total"] = 27;
+                r2[$"{y}_Total"] = 90;
+            }
+            dt.Rows.Add(r2);
+
+            return dt;
         }
-
-        // 模擬資料填充：
-        // 假設有兩筆產品/客戶資料，其鍵欄可能有重複（用於測試多年度合併）
-        // 範例資料1: 在2024和2025年都有紀錄
-        DataRow r1_2024 = dt.NewRow();
-        r1_2024["部門"] = "S100";
-        r1_2024["業務"] = "Alice";
-        r1_2024["區域"] = "TW";
-        r1_2024["客戶"] = "VI";
-        r1_2024["Cust Item"] = "Internal";
-        r1_2024["Substrate"] = "SubA";
-        r1_2024["Thk1"] = 1.2; r1_2024["Thk2"] = 1.5; r1_2024["Thk3"] = 1.7;
-        r1_2024["Res1"] = 100; r1_2024["Res2"] = 110; r1_2024["Res3"] = 120;
-        // 填入2024年的月份與合計值（僅示意，實際應計算合計）
-        r1_2024["Jan_2024"] = 50; r1_2024["Feb_2024"] = 60; r1_2024["Mar_2024"] = 55;
-        r1_2024["Q1_2024"] = 165; // 假設 Q1 合計
-        r1_2024["Apr_2024"] = 70; r1_2024["May_2024"] = 65; r1_2024["Jun_2024"] = 80;
-        r1_2024["Q2_2024"] = 215;
-        r1_2024["Jul_2024"] = 90; r1_2024["Aug_2024"] = 85; r1_2024["Sep_2024"] = 95;
-        r1_2024["Q3_2024"] = 270;
-        r1_2024["Oct_2024"] = 100; r1_2024["Nov_2024"] = 110; r1_2024["Dec_2024"] = 105;
-        r1_2024["Q4_2024"] = 315;
-        r1_2024["Total_2024"] = 965;
-        // 2025年同鍵資料
-        DataRow r1_2025 = dt.NewRow();
-        r1_2025.ItemArray = r1_2024.ItemArray.Clone() as object[]; // 複製靜態欄資料與Thk/Res
-        r1_2025["Jan_2025"] = 55; r1_2025["Feb_2025"] = 65; r1_2025["Mar_2025"] = 60;
-        r1_2025["Q1_2025"] = 180;
-        r1_2025["Apr_2025"] = 75; r1_2025["May_2025"] = 70; r1_2025["Jun_2025"] = 85;
-        r1_2025["Q2_2025"] = 230;
-        r1_2025["Jul_2025"] = 95; r1_2025["Aug_2025"] = 100; r1_2025["Sep_2025"] = 90;
-        r1_2025["Q3_2025"] = 285;
-        r1_2025["Oct_2025"] = 110; r1_2025["Nov_2025"] = 120; r1_2025["Dec_2025"] = 115;
-        r1_2025["Q4_2025"] = 345;
-        r1_2025["Total_2025"] = 1040;
-        // 範例資料2: 僅在2025年有紀錄
-        DataRow r2_2025 = dt.NewRow();
-        r2_2025["部門"] = "S200";
-        r2_2025["業務"] = "Bob";
-        r2_2025["區域"] = "CN";
-        r2_2025["客戶"] = "EPS";
-        r2_2025["Cust Item"] = "External";
-        r2_2025["Substrate"] = "SubB";
-        r2_2025["Thk1"] = 0.8; r2_2025["Thk2"] = 1.0; r2_2025["Thk3"] = 1.1;
-        r2_2025["Res1"] = 80; r2_2025["Res2"] = 85; r2_2025["Res3"] = 90;
-        // 填入2025年的值
-        r2_2025["Jan_2025"] = 30; r2_2025["Feb_2025"] = 35; r2_2025["Mar_2025"] = 40;
-        r2_2025["Q1_2025"] = 105;
-        r2_2025["Apr_2025"] = 45; r2_2025["May_2025"] = 50; r2_2025["Jun_2025"] = 55;
-        r2_2025["Q2_2025"] = 150;
-        r2_2025["Jul_2025"] = 60; r2_2025["Aug_2025"] = 65; r2_2025["Sep_2025"] = 70;
-        r2_2025["Q3_2025"] = 195;
-        r2_2025["Oct_2025"] = 75; r2_2025["Nov_2025"] = 80; r2_2025["Dec_2025"] = 85;
-        r2_2025["Q4_2025"] = 240;
-        r2_2025["Total_2025"] = 690;
-
-        // 將資料列加入 DataTable
-        dt.Rows.Add(r1_2024);
-        dt.Rows.Add(r1_2025);
-        dt.Rows.Add(r2_2025);
-
-        // 合併多年度資料：由於我們直接在同一 DataTable 插入模擬的多年度欄位資料，
-        // 這裡無需額外合併處理。如果實際上各年度資料分開查詢，可在此進行合併。
-        // （例如，用主鍵比對填充不同年度欄位或新增新的資料列）
-
-        return dt;
     }
 }
