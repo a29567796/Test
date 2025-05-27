@@ -8,29 +8,87 @@ using System.Web.UI.WebControls;
 
 public partial class AnnualReport : System.Web.UI.Page
 {
-    // 靜態 WebMethod：接受前端 AJAX 請求，回傳 JSON 資料字串
-    [WebMethod]
-    public static string GetReportData(string dept, string business, string region, int[] years, string customer, string custItem, string substrate)
+    // 共用的查詢資料方法
+    private static DataTable FetchReportData(string dept, string biz, string region, int[] years, 
+                                            string customer, string custItem, string substrate, 
+                                            string productType, string shipTo, DateTime? realDate, 
+                                            string status, string orderType)
     {
-        // 構建查詢結果的 DataTable
-        DataTable dt = BuildReportData(dept, business, region, years, customer, custItem, substrate);
-        // 將 DataTable 序列化為 JSON 字串返回11
-        JavaScriptSerializer js = new JavaScriptSerializer();
-        js.MaxJsonLength = int.MaxValue; // 如資料量大，可適當增加序列化最大長度
-        List<Dictionary<string, object>> rowsList = new List<Dictionary<string, object>>();
-        foreach (DataRow dr in dt.Rows)
-        {
-            Dictionary<string, object> rowData = new Dictionary<string, object>();
-            foreach (DataColumn col in dt.Columns)
-            {
-                rowData[col.ColumnName] = dr[col];
-            }
-            rowsList.Add(rowData);
-        }
-        string jsonResult = js.Serialize(rowsList);
-        return jsonResult;
+        // TODO: 根據參數從資料庫查詢並返回 DataTable
+        // 這裡可調用儲存程序，執行PIVOT等，使DataTable欄位為 動態年份X月份/合計
+        DataTable dt = new DataTable();
+        // （示意：加入欄位，如 "2022_Jan", "2022_Feb", ..., "2022_Total", etc）
+        // ...
+        return dt;
     }
 
+    [WebMethod]
+    public static List<Dictionary<string, object>> GetReportData(string department, string business, string region, int[] yearList,
+            string customer, string custItem, string substrate, string productType, string shipTo, string realDate, string status, string orderType)
+    {
+        DateTime? realDateVal = null;
+        if (!string.IsNullOrEmpty(realDate))
+            realDateVal = DateTime.ParseExact(realDate, "yyyy/MM/dd", null);
+        // 調用共用方法取回 DataTable
+        DataTable dt = FetchReportData(department, business, region, yearList ?? new int[0],
+                                       customer, custItem, substrate, productType, shipTo, realDateVal, status, orderType);
+        // 將 DataTable 轉成 List<Dictionary> 以利 JSON 序列化
+        var resultList = new List<Dictionary<string, object>>();
+        foreach (DataRow dr in dt.Rows)
+        {
+            var rowDict = new Dictionary<string, object>();
+            foreach (DataColumn col in dt.Columns)
+            {
+                rowDict[col.ColumnName] = dr[col];
+            }
+            resultList.Add(rowDict);
+        }
+        return resultList;
+    }
+
+    protected void btnExport_Click(object sender, EventArgs e)
+    {
+        // 從前端控制項獲取目前的查詢條件值
+        string dept = Request.Form["ddlDept"];      // 或直接用 ddlDept.SelectedValue
+        string biz = Request.Form["ddlBiz"];
+        string region = Request.Form["ddlRegion"];
+        string[] yearsStr = Request.Form.GetValues("ddlYear"); // 多選值陣列
+        int[] years = yearsStr?.Select(int.Parse).ToArray() ?? new int[0];
+        string customer = Request.Form["txtCustomer"];
+        string custItem = Request.Form["txtCustItem"];
+        string substrate = Request.Form["ddlSubstrate"];
+        string productType = Request.Form["ddlProductType"];
+        string shipTo = Request.Form["txtShipTo"];
+        string realDateStr = Request.Form["txtRealDate"];
+        DateTime? realDateVal = null;
+        if (!string.IsNullOrEmpty(realDateStr))
+            realDateVal = DateTime.ParseExact(realDateStr, "yyyy/MM/dd", null);
+        string status = Request.Form["ddlStatus"];
+        string orderType = Request.Form["ddlOrderType"];
+
+        // 重新取得報表資料
+        DataTable dt = FetchReportData(dept, biz, region, years, customer, custItem, substrate, productType, shipTo, realDateVal, status, orderType);
+
+        // 使用 EPPlus 將 DataTable 匯出為 Excel 檔
+        using (ExcelPackage pck = new ExcelPackage())
+        {
+            ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
+            ExcelWorksheet ws = pck.Workbook.Worksheets.Add("Report");
+            ws.Cells["A1"].LoadFromDataTable(dt, true);
+            ws.Cells.AutoFitColumns();
+            Response.Clear();
+            Response.ContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+            Response.AddHeader("Content-Disposition", "attachment; filename=AnnualReport.xlsx");
+            // 將 ExcelPackage 寫入輸出流
+            using (var ms = new MemoryStream())
+            {
+                pck.SaveAs(ms);
+                ms.WriteTo(Response.OutputStream);
+            }
+            Response.End();
+        }
+    }
+}
     // Excel 匯出按鈕事件處理：將完整報表資料輸出成 Excel 檔案
     protected void btnExport_Click(object sender, EventArgs e)
     {
