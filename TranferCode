@@ -2,3 +2,13 @@ A.最前面還要加上這6個固定欄位:1.Customer 2.Inch 3.Cust Item 4.OA It
 B.幫我固定每個欄位的大小
 C.固定欄位(Customer、Inch、Cust Item、OA Item、Substrate、Price、Thk1、Res1、Thk2、Res2、Thk3、Res3)由於是在第三行，所以上方會有一大塊灰色部分，幫我去除上方灰色部分，只要留下該Row大小的灰色即可
 請反覆確認程式碼正確性，最後將全部完整並且正確的程式碼給我，讓我能直接複製貼上 
+
+
+繼續修改：
+前提請依照最後一次回應的程式碼做修改，要保留程式碼邏輯及架構，並依照此架構再去調整需要修改部分。
+A.最前面還要加上這6個固定欄位:1.Customer 2.Inch 3.Cust Item 4.OA Item 5.Substrate 6.Price，測試資料也順便幫我新增這幾個欄位，並且測試資料增加為20筆資料(可重複)，我想看最後顯示所得出結果
+B.幫我固定每個欄位的大小
+C.固定欄位(Customer、Inch、Cust Item、OA Item、Substrate、Price、Thk1、Res1、Thk2、Res2、Thk3、Res3)由於是在第三行，所以上方會有一大塊灰色部分，幫我去除上方灰色部分，只要留下該Row大小的灰色即可
+請反覆確認程式碼正確性，最後將全部完整並且正確的程式碼給我，讓我能直接複製貼上
+
+
