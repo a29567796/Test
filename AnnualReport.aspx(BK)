@@ -18,9 +18,10 @@
 
     <style>
         /* ---------- Sticky 三層表頭 ---------- */
-        thead tr:nth-child(1) th { position: sticky; top: 0;    z-index: 3; background:#f2f2f2; }
-        thead tr:nth-child(2) th { position: sticky; top: 48px; z-index: 2; background:#fafafa; }
-        thead tr:nth-child(3) th { position: sticky; top: 96px; z-index: 1; background:#fff; }
+        thead tr.totals-row   th{ position:sticky; top:0;    z-index:4; background:#fff; color:#007bff; }
+        thead tr:nth-child(2) th{ position:sticky; top:48px; z-index:3; background:#f2f2f2; }
+        thead tr:nth-child(3) th{ position:sticky; top:96px; z-index:2; background:#fafafa; }
+        thead tr:nth-child(4) th{ position:sticky; top:144px;z-index:1; background:#fff; }
 
         /* 固定欄位在 row1/row2 的空白 th：改為白底去大灰塊 */
         .fc-blank            { background:#fff!important; }
@@ -224,6 +225,7 @@
                     const data = r.d || r;
                     buildHeader(years);
                     buildBody(data, years);
+                    updateTotals();   // 產生後即計算合計
                     // 同步核取方塊顯示
                     $(".col-toggle").each(function () {
                         if (!$(this).is(":checked")) {
@@ -255,6 +257,13 @@
 
         function buildHeader(years) {
             const $thead = $("#resultTable thead").empty();
+
+            /* ── totals row (空值，稍後填) ── */
+            let rt = "<tr class='totals-row'>";
+            fixedCols.forEach(fc => rt += `<th class="${fc.c} fc-blank ${fc.w}"></th>`);
+            years.forEach(() => { for (let i = 0; i < 17; i++) rt += "<th></th>"; });
+            rt += "</tr>";
+            $thead.append(rt);
 
             /* ---- row1 ---- */
             let r1 = "<tr>";
@@ -317,6 +326,31 @@
                 sb.push("</tr>");
             });
             $tb.html(sb.join(""));
+        }
+
+        /* --------- 計算合計列 --------- */
+        function updateTotals() {
+            const $rows = $("#resultTable tbody tr");
+            if (!$rows.length) return;
+
+            const colCnt = $rows.first().children().length;
+            const sums = Array(colCnt).fill(0);
+
+            $rows.each(function () {
+                $(this).children().each(function (idx) {
+                    const v = parseFloat($(this).text().replace(/,/g, ""));
+                    if (!isNaN(v)) sums[idx] += v;
+                });
+            });
+
+            const $totRow = $("#resultTable thead tr.totals-row");
+            $totRow.children().each(function (idx) {
+                if (idx === 0) { $(this).text("總計"); }
+                else {
+                    const val = sums[idx];
+                    $(this).text(val ? val.toLocaleString() : "");
+                }
+            });
         }
     </script>
 </body>
