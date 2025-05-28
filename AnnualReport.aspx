@@ -15,6 +15,7 @@
     <script src="https://code.jquery.com/ui/1.13.2/jquery-ui.min.js"></script>
 
     <style>
+
         /* ---------- Sticky 表頭 ---------- */
         thead tr.totals-row   th{position:sticky;top:0;   z-index:4;background:#fff;color:#007bff;}
         thead tr:nth-child(2) th{position:sticky;top:48px;z-index:3;background:#f2f2f2;}
@@ -22,7 +23,7 @@
         thead tr:nth-child(4) th{position:sticky;top:144px;z-index:1;background:#fff;}
 
         /* 固定欄位：空白 / 標題 */
-        .fc-blank{background:#fff!important;}
+        .fc-blank{background:#fff!important;border:0!important;}
         .fc      {background:#f2f2f2!important;}
 
         /* 年度色塊 */
@@ -41,7 +42,21 @@
         .table-bordered td,.table-bordered th{border:0;}
         .table-sm td,.table-sm th{padding:.75rem;}
 
-        .table tbody tr{border-bottom:1px solid;}
+        .table tbody tr td{box-shadow: inset 0px 1px 0px rgba(0, 0, 0, 0.1), /* 上邊框 */
+                                       inset 1px 0px 0px rgba(0, 0, 0, 0.1), /* 右邊框 */
+                                       inset 0px -1px 0px rgba(0, 0, 0, 0.1), /* 下邊框 */
+                                       inset -1px 0px 0px rgba(0, 0, 0, 0.1); /* 左邊框 */}
+
+        /* ---------- 新增：滑鼠行列高亮 ---------- */
+        tbody tr.row-hover td,
+        tbody td.col-hover{
+            background:#FFF3CD !important;   /* 淺黃 */
+        }
+
+        /* ---------- 新增：列合併隱藏儲存格 ---------- */
+        .merged-cell{
+            visibility:hidden;   /* 仍佔位，維持欄位數一致 */
+        }
     </style>
 </head>
 <body>
@@ -179,6 +194,25 @@
             const cls = $(this).val();
             $("th." + cls + ", td." + cls).toggle($(this).is(":checked"));
         });
+
+        /* ---------- A. 行/列高亮：事件委派 ---------- */
+        $("#resultTable")
+            .on("mouseenter", "tbody td", function () {
+                const idx = $(this).index();
+                /* 清除舊高亮 */
+                $("#resultTable tbody tr").removeClass("row-hover");
+                $("#resultTable tbody td").removeClass("col-hover");
+                /* 行高亮 */
+                $(this).parent().addClass("row-hover");
+                /* 列高亮 */
+                $("#resultTable tbody tr").each(function () {
+                    $(this).children().eq(idx).addClass("col-hover");
+                });
+            })
+            .on("mouseleave", "tbody td", function () {
+                $("#resultTable tbody tr").removeClass("row-hover");
+                $("#resultTable tbody td").removeClass("col-hover");
+            });
     });
 
     /* ---------- AJAX ---------- */
@@ -211,6 +245,7 @@
                 buildHeader(years, viewType);
                 buildBody(data, years, viewType);
                 updateTotals();
+                /* 重跑欄位顯示 */
                 $(".col-toggle").each(function () {
                     if (!$(this).is(":checked"))
                         $("th." + this.value + ", td." + this.value).hide();
@@ -244,7 +279,7 @@
         let row0 = "<tr class='totals-row'>";
         fixedCols.forEach(fc => row0 += `<th class="${fc.c} fc-blank ${fc.w}"></th>`);
         const colPerYear = (viewType === "month") ? 17 : (viewType === "quarter") ? 5 : 1;
-        years.forEach(() => { for (let i = 0; i < colPerYear; i++)row0 += "<th></th>"; });
+        years.forEach(() => { for (let i = 0; i < colPerYear; i++) row0 += "<th></th>"; });
         row0 += "</tr>";
         $thead.append(row0);
 
@@ -357,7 +392,7 @@
         const $tot = $("#resultTable thead tr.totals-row");
         $tot.children().each(function (i) {
             if (i === 0) { $(this).text("總計"); }
-            else if (i < 12) {$(this).text(""); }
+            else if (i < 12) { $(this).text(""); }
             else {
                 const v = sums[i];
                 $(this).text(v ? v.toLocaleString() : "");
