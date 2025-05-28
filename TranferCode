@@ -12,3 +12,84 @@ C.固定欄位(Customer、Inch、Cust Item、OA Item、Substrate、Price、Thk1�
 請反覆確認程式碼正確性，最後將全部完整並且正確的程式碼給我，讓我能直接複製貼上
 
 
+/// <summary>
+/// 產生 20 筆範例資料（含月份、季合計、全年總計）
+/// </summary>
+private static DataTable BuildTestData()
+{
+    int[] years = { 2023, 2024, 2025 };
+    var dt = new DataTable();
+
+    // 固定欄
+    dt.Columns.AddRange(new[]
+    {
+        new DataColumn("Customer", typeof(string)),
+        new DataColumn("Inch",     typeof(string)),
+        new DataColumn("CustItem", typeof(string)),
+        new DataColumn("OAItem",   typeof(string)),
+        new DataColumn("Substrate",typeof(string)),
+        new DataColumn("Price",    typeof(double)),
+        new DataColumn("Thk1",     typeof(double)),
+        new DataColumn("Res1",     typeof(int)),
+        new DataColumn("Thk2",     typeof(double)),
+        new DataColumn("Res2",     typeof(int)),
+        new DataColumn("Thk3",     typeof(double)),
+        new DataColumn("Res3",     typeof(int)),
+        new DataColumn("排程料號",   typeof(string))
+    });
+
+    // 動態欄：月、季、年總
+    string[] monthCols = { "Jan","Feb","Mar","Apr","May","Jun",
+                           "Jul","Aug","Sep","Oct","Nov","Dec" };
+    foreach (int y in years)
+    {
+        foreach (string m in monthCols) dt.Columns.Add($"{y}{m}", typeof(decimal));
+        dt.Columns.Add($"{y}Q1Sum",  typeof(decimal));
+        dt.Columns.Add($"{y}Q2Sum",  typeof(decimal));
+        dt.Columns.Add($"{y}Q3Sum",  typeof(decimal));
+        dt.Columns.Add($"{y}Q4Sum",  typeof(decimal));
+        dt.Columns.Add($"{y}Total",  typeof(decimal));
+    }
+
+    // 產生 20 筆資料
+    Random rnd = new Random(0);
+    for (int i = 1; i <= 20; i++)
+    {
+        var r = dt.NewRow();
+        r["Customer"]  = $"Cust{(i % 4) + 1}";
+        r["Inch"]      = $"{6 + (i % 3)}\"";
+        r["CustItem"]  = $"CI{(i % 6) + 1}";
+        r["OAItem"]    = $"OA{(i % 5) + 1}";
+        r["Substrate"] = (i % 2 == 0) ? "SubA" : "SubB";
+        r["Price"]     = Math.Round(100 + rnd.NextDouble() * 50, 2);
+        r["Thk1"]      = 1.0 + 0.05 * i;
+        r["Res1"]      = 80  + i;
+        r["Thk2"]      = 1.2 + 0.05 * i;
+        r["Res2"]      = 90  + i;
+        r["Thk3"]      = 1.4 + 0.05 * i;
+        r["Res3"]      = 100 + i;
+        r["排程料號"]   = $"MAT{i:D4}";
+
+        foreach (int y in years)
+        {
+            decimal sumQ1 = 0, sumQ2 = 0, sumQ3 = 0, sumQ4 = 0;
+            // 依月份填入亂數並累加
+            for (int m = 1; m <= 12; m++)
+            {
+                decimal val = rnd.Next(10, 50);
+                r[$"{y}{monthCols[m - 1]}"] = val;
+                if (m <=  3) sumQ1 += val;
+                else if (m <= 6) sumQ2 += val;
+                else if (m <= 9) sumQ3 += val;
+                else             sumQ4 += val;
+            }
+            r[$"{y}Q1Sum"] = sumQ1;
+            r[$"{y}Q2Sum"] = sumQ2;
+            r[$"{y}Q3Sum"] = sumQ3;
+            r[$"{y}Q4Sum"] = sumQ4;
+            r[$"{y}Total"] = sumQ1 + sumQ2 + sumQ3 + sumQ4;
+        }
+        dt.Rows.Add(r);
+    }
+    return dt;
+}
