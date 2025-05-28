@@ -22,7 +22,7 @@
         thead tr:nth-child(4) th{position:sticky;top:144px;z-index:1;background:#fff;}
 
         /* 固定欄位：空白 / 標題 */
-        .fc-blank{background:#fff!important; border:0px!important;}
+        .fc-blank{background:#fff!important;border:0!important;}
         .fc      {background:#f2f2f2!important;}
 
         /* 年度色塊 */
@@ -42,6 +42,17 @@
         .table-sm td,.table-sm th{padding:.75rem;}
 
         .table tbody tr{border-bottom:1px solid;}
+
+        /* ---------- 新增：滑鼠行列高亮 ---------- */
+        tbody tr.row-hover td,
+        tbody td.col-hover{
+            background:#FFF3CD !important;   /* 淺黃 */
+        }
+
+        /* ---------- 新增：列合併隱藏儲存格 ---------- */
+        .merged-cell{
+            visibility:hidden;   /* 仍佔位，維持欄位數一致 */
+        }
     </style>
 </head>
 <body>
@@ -179,6 +190,25 @@
             const cls = $(this).val();
             $("th." + cls + ", td." + cls).toggle($(this).is(":checked"));
         });
+
+        /* ---------- A. 行/列高亮：事件委派 ---------- */
+        $("#resultTable")
+            .on("mouseenter", "tbody td", function () {
+                const idx = $(this).index();
+                /* 清除舊高亮 */
+                $("#resultTable tbody tr").removeClass("row-hover");
+                $("#resultTable tbody td").removeClass("col-hover");
+                /* 行高亮 */
+                $(this).parent().addClass("row-hover");
+                /* 列高亮 */
+                $("#resultTable tbody tr").each(function () {
+                    $(this).children().eq(idx).addClass("col-hover");
+                });
+            })
+            .on("mouseleave", "tbody td", function () {
+                $("#resultTable tbody tr").removeClass("row-hover");
+                $("#resultTable tbody td").removeClass("col-hover");
+            });
     });
 
     /* ---------- AJAX ---------- */
@@ -210,7 +240,9 @@
                 const data = r.d || r;
                 buildHeader(years, viewType);
                 buildBody(data, years, viewType);
+                /*  mergeFirstFiveRows();      ---------- B. 執行列合併 ---------- */
                 updateTotals();
+                /* 重跑欄位顯示 */
                 $(".col-toggle").each(function () {
                     if (!$(this).is(":checked"))
                         $("th." + this.value + ", td." + this.value).hide();
@@ -222,18 +254,18 @@
 
     /* ---------- 固定欄 ---------- */
     const fixedCols = [
-        { t: "Customer", c: "col-customer", w: "w120" },
-        { t: "Inch", c: "col-inch", w: "w60" },
+        { t: "Customer",  c: "col-customer", w: "w120" },
+        { t: "Inch",      c: "col-inch",     w: "w60"  },
         { t: "Cust&nbsp;Item", c: "col-custitem", w: "w120" },
-        { t: "OA&nbsp;Item", c: "col-oaitem", w: "w120" },
-        { t: "Substrate", c: "col-substrate", w: "w100" },
-        { t: "Price", c: "col-price", w: "w80" },
-        { t: "Thk1", c: "col-thk1", w: "w80" },
-        { t: "Res1", c: "col-res1", w: "w80" },
-        { t: "Thk2", c: "col-thk2", w: "w80" },
-        { t: "Res2", c: "col-res2", w: "w80" },
-        { t: "Thk3", c: "col-thk3", w: "w80" },
-        { t: "Res3", c: "col-res3", w: "w80" }
+        { t: "OA&nbsp;Item",   c: "col-oaitem",   w: "w120" },
+        { t: "Substrate", c: "col-substrate",w: "w100" },
+        { t: "Price",     c: "col-price",    w: "w80"  },
+        { t: "Thk1",      c: "col-thk1",     w: "w80"  },
+        { t: "Res1",      c: "col-res1",     w: "w80"  },
+        { t: "Thk2",      c: "col-thk2",     w: "w80"  },
+        { t: "Res2",      c: "col-res2",     w: "w80"  },
+        { t: "Thk3",      c: "col-thk3",     w: "w80"  },
+        { t: "Res3",      c: "col-res3",     w: "w80"  }
     ];
 
     /* ---------- 表頭 ---------- */
@@ -244,7 +276,7 @@
         let row0 = "<tr class='totals-row'>";
         fixedCols.forEach(fc => row0 += `<th class="${fc.c} fc-blank ${fc.w}"></th>`);
         const colPerYear = (viewType === "month") ? 17 : (viewType === "quarter") ? 5 : 1;
-        years.forEach(() => { for (let i = 0; i < colPerYear; i++)row0 += "<th></th>"; });
+        years.forEach(() => { for (let i = 0; i < colPerYear; i++) row0 += "<th></th>"; });
         row0 += "</tr>";
         $thead.append(row0);
 
@@ -340,6 +372,33 @@
             sb.push("</tr>");
         });
         $tb.html(sb.join(""));
+    }
+
+    /* ---------- B. 合併 tbody 前五列重複儲存格 ---------- */
+    function mergeFirstFiveRows() {
+        const $rows = $("#resultTable tbody tr");
+        const maxIdx = Math.min(5, $rows.length - 1);  // 只處理前五列，且需有下一列
+        if (maxIdx < 1) return;
+
+        for (let i = 0; i < maxIdx; i++) {
+            const $row = $rows.eq(i);
+            const $next = $rows.eq(i + 1);
+            const colCnt = $row.children().length;
+
+            for (let c = 0; c < colCnt; c++) {
+                const $cell = $row.children().eq(c);
+                const $nextCell = $next.children().eq(c);
+                const v1 = $cell.text().trim();
+                const v2 = $nextCell.text().trim();
+
+                /* 僅當內容非空且相同時合併 */
+                if (v1 && v1 === v2) {
+                    const rs = parseInt($cell.attr("rowspan")) || 1;
+                    $cell.attr("rowspan", rs + 1);
+                    $nextCell.addClass("merged-cell").text("");  /* 隱藏下一列格並清字 */
+                }
+            }
+        }
     }
 
     /* ---------- 合計 ---------- */
