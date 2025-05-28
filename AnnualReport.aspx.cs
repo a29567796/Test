@@ -8,7 +8,7 @@ using System.IO;
 
 namespace CRM
 {
-    public partial class AnnualReport1 : System.Web.UI.Page
+    public partial class AnnualReport : System.Web.UI.Page
     {
         /* ========= AJAX WebMethod ========= */
         [WebMethod]
@@ -80,7 +80,7 @@ namespace CRM
             }
 
             // 產生 20 筆示範資料
-            var rnd = new Random(10);
+            var rnd = new Random(5000);
             for (int i = 1; i <= 20; i++)
             {
                 var r = dt.NewRow();
@@ -95,7 +95,7 @@ namespace CRM
 
                 foreach (int y in years)
                 {
-                    double baseVal = rnd.Next(10, 30);
+                    double baseVal = rnd.Next(1000, 3000);
                     r[$"{y}_Jan"] = baseVal;
                     r[$"{y}_Feb"] = baseVal + 1;
                     r[$"{y}_Mar"] = baseVal + 2;
