@@ -15,7 +15,7 @@
     <script src="https://code.jquery.com/ui/1.13.2/jquery-ui.min.js"></script>
 
     <style>
-        /* ---------- Sticky 表頭 ---------- */
+        /* ---------- Sticky (仍保留，月檢視最下層可用) ---------- */
         thead tr.totals-row   th{position:sticky;top:0;   z-index:4;background:#fff;color:#007bff;}
         thead tr:nth-child(2) th{position:sticky;top:48px;z-index:3;background:#f2f2f2;}
         thead tr:nth-child(3) th{position:sticky;top:96px;z-index:2;background:#fafafa;}
@@ -40,16 +40,17 @@
         .table thead th{vertical-align:bottom;border-bottom:0;}
         .table-bordered td,.table-bordered th{border:0;}
         .table-sm td,.table-sm th{padding:.75rem;}
+
+        /* 讓 headerTable 與 bodyTable 欄寬對齊 */
+        #headerTable, #bodyTable{table-layout:fixed;width:100%;}
     </style>
 </head>
 <body>
 <form id="form1" runat="server" class="container-fluid my-3">
-
 <!-- ===== 查詢條件 ===== -->
 <div class="card mb-3">
   <div class="card-header">查詢條件</div>
   <div class="card-body">
-
     <!-- 第一列 -->
     <div class="form-row">
       <div class="form-group col-md-2">
@@ -87,7 +88,6 @@
         </select>
       </div>
     </div>
-
     <!-- 第二列 -->
     <div class="form-row">
       <div class="form-group col-md-2">
@@ -124,7 +124,6 @@
         </select>
       </div>
     </div>
-
     <!-- 第三列：月 / 季 / 年 -->
     <div class="form-row mb-2">
       <div class="form-group col-md-12">
@@ -134,12 +133,10 @@
         <label class="mr-2"><input type="radio" name="viewType" value="year"/>年</label>
       </div>
     </div>
-
-    <!-- 操作按鈕 -->
+    <!-- 操作 -->
     <button id="btnQuery" type="button" class="btn btn-primary mr-2">查詢</button>
     <asp:Button ID="btnExport" runat="server" CssClass="btn btn-success" Text="匯出 Excel" OnClick="btnExport_Click" />
-
-    <!-- Thk/Res 欄位切換 -->
+    <!-- Thk/Res 顯示切換 -->
     <div class="mt-3">
       <label class="mr-2">顯示欄位：</label>
       <label class="mr-2"><input type="checkbox" class="col-toggle" value="col-thk1" checked/>Thk1</label>
@@ -149,41 +146,40 @@
       <label class="mr-2"><input type="checkbox" class="col-toggle" value="col-res2" checked/>Res2</label>
       <label class="mr-2"><input type="checkbox" class="col-toggle" value="col-res3" checked/>Res3</label>
     </div>
-
   </div>
 </div>
 
-<!-- ===== 報表 ===== -->
-<div class="table-responsive">
-  <table id="resultTable" class="table table-bordered table-sm">
+<!-- ===== 表頭 + 表身 ===== -->
+<div class="table-wrapper">
+  <table id="headerTable" class="table table-bordered table-sm mb-0">
     <thead></thead>
-    <tbody></tbody>
   </table>
+  <div class="table-responsive">
+    <table id="bodyTable" class="table table-bordered table-sm">
+      <tbody></tbody>
+    </table>
+  </div>
 </div>
 </form>
 
 <script>
 $(function () {
-  /* 日期 */
   $(".datepicker").datepicker({ dateFormat: "yy/mm/dd" });
+  const y=new Date().getFullYear().toString();
+  $(`input[name=year][value=${y}]`).prop("checked",true);
 
-  /* 預選今年 */
-  const y = new Date().getFullYear().toString();
-  $(`input[name=year][value=${y}]`).prop("checked", true);
-
-  /* 事件 */
-  $("#btnQuery").on("click", queryReport);
-  $(".col-toggle").on("change", function () {
-    const cls = $(this).val();
-    $("th." + cls + ", td." + cls).toggle($(this).is(":checked"));
+  $("#btnQuery").on("click",queryReport);
+  $(".col-toggle").on("change",function(){
+    const cls=$(this).val();
+    $("th."+cls+", td."+cls).toggle($(this).is(":checked"));
   });
 });
 
 /* ---------- AJAX ---------- */
 function queryReport(){
-  const years = $("input[name=year]:checked").map((_,el)=>+el.value).get();
-  if(!years.length){ alert("請至少選一年"); return; }
-  const viewType = $("input[name=viewType]:checked").val(); // month / quarter / year
+  const years=$("input[name=year]:checked").map((_,el)=>+el.value).get();
+  if(!years.length){alert("請至少選一年");return;}
+  const viewType=$("input[name=viewType]:checked").val();
 
   $.ajax({
     type:"POST",
@@ -191,18 +187,11 @@ function queryReport(){
     contentType:"application/json; charset=utf-8",
     dataType:"json",
     data:JSON.stringify({
-      department:$("#ddlDept").val(),
-      business  :$("#ddlBiz").val(),
-      region    :$("#ddlRegion").val(),
-      yearList  :years,
-      customer  :$("#ddlCustomer").val(),
-      custItem  :$("#txtCustItem").val(),
-      substrate :$("#ddlSubstrate").val(),
-      productType:$("#ddlProductType").val(),
-      shipTo    :$("#txtShipTo").val(),
-      realDate  :$("#txtRealDate").val(),
-      status    :$("#ddlStatus").val(),
-      orderType :$("#ddlOrderType").val()
+      department:$("#ddlDept").val(),business:$("#ddlBiz").val(),region:$("#ddlRegion").val(),
+      yearList:years,customer:$("#ddlCustomer").val(),custItem:$("#txtCustItem").val(),
+      substrate:$("#ddlSubstrate").val(),productType:$("#ddlProductType").val(),
+      shipTo:$("#txtShipTo").val(),realDate:$("#txtRealDate").val(),
+      status:$("#ddlStatus").val(),orderType:$("#ddlOrderType").val()
     }),
     success:r=>{
       const data=r.d||r;
@@ -236,72 +225,57 @@ const fixedCols=[
 
 /* ---------- 表頭 ---------- */
 function buildHeader(years,viewType){
-  const $thead=$("#resultTable thead").empty();
+  const $thead=$("#headerTable thead").empty();
+  const colPerYear=(viewType==="month")?17:(viewType==="quarter")?5:1;
 
-  /* row0：Totals (空) */
+  /* row0 Totals */
   let row0="<tr class='totals-row'>";
   fixedCols.forEach(fc=>row0+=`<th class="${fc.c} fc-blank ${fc.w}"></th>`);
-  const colPerYear=(viewType==="month")?17:(viewType==="quarter")?5:1;
   years.forEach(()=>{for(let i=0;i<colPerYear;i++)row0+="<th></th>";});
   row0+="</tr>";
   $thead.append(row0);
 
-  const fcBlank = ()=>fixedCols.map(fc=>`<th class="${fc.c} fc-blank ${fc.w}"></th>`).join("");
-  const fcTitle = ()=>fixedCols.map(fc=>`<th class="${fc.c} fc ${fc.w}">${fc.t}</th>`).join("");
+  const fcBlank=()=>fixedCols.map(fc=>`<th class="${fc.c} fc-blank ${fc.w}"></th>`).join("");
+  const fcTitle=()=>fixedCols.map(fc=>`<th class="${fc.c} fc ${fc.w}">${fc.t}</th>`).join("");
 
-  /* 月 / 季 / 年 個別處理 */
   if(viewType==="month"){
-    /* row1：年 */
+    /* 年 */
     let r1="<tr>"+fcBlank();
-    years.forEach((y,i)=>r1+=`<th colspan="17" class="year-${i%4}">${y}</th>`);
-    r1+="</tr>";
-    $thead.append(r1);
-
-    /* row2：季 */
+    years.forEach((y,i)=>r1+=`<th colspan="17" class="year-${i%4}">${y}</th>`);r1+="</tr>";
+    /* 季 */
     let r2="<tr>"+fcBlank();
     years.forEach(()=>r2+="<th colspan='4'>Q1</th><th colspan='4'>Q2</th><th colspan='4'>Q3</th><th colspan='4'>Q4</th><th rowspan='2'>Total</th>");
     r2+="</tr>";
-    $thead.append(r2);
-
-    /* row3：固定欄 + 月 */
+    /* 月 */
     let r3="<tr>"+fcTitle();
     years.forEach(()=>r3+=`
-      <th>Jan</th><th>Feb</th><th>Mar</th><th>Q1&nbsp;T</th>
-      <th>Apr</th><th>May</th><th>Jun</th><th>Q2&nbsp;T</th>
-      <th>Jul</th><th>Aug</th><th>Sep</th><th>Q3&nbsp;T</th>
-      <th>Oct</th><th>Nov</th><th>Dec</th><th>Q4&nbsp;T</th>`);
-    r3+="</tr>";
-    $thead.append(r3);
+       <th>Jan</th><th>Feb</th><th>Mar</th><th>Q1&nbsp;T</th>
+       <th>Apr</th><th>May</th><th>Jun</th><th>Q2&nbsp;T</th>
+       <th>Jul</th><th>Aug</th><th>Sep</th><th>Q3&nbsp;T</th>
+       <th>Oct</th><th>Nov</th><th>Dec</th><th>Q4&nbsp;T</th>`);r3+="</tr>";
+    $thead.append(r1,r2,r3);
 
   }else if(viewType==="quarter"){
-    /* row1：年 */
+    /* 年 */
     let r1="<tr>"+fcBlank();
-    years.forEach((y,i)=>r1+=`<th colspan="5" class="year-${i%4}">${y}</th>`);
-    r1+="</tr>";
-    $thead.append(r1);
-
-    /* row2：固定欄 + 季總 */
+    years.forEach((y,i)=>r1+=`<th colspan="5" class="year-${i%4}">${y}</th>`);r1+="</tr>";
+    /* 季總 */
     let r2="<tr>"+fcTitle();
-    years.forEach(()=>r2+="<th>Q1&nbsp;T</th><th>Q2&nbsp;T</th><th>Q3&nbsp;T</th><th>Q4&nbsp;T</th><th>Total</th>");
-    r2+="</tr>";
-    $thead.append(r2);
+    years.forEach(()=>r2+="<th>Q1&nbsp;T</th><th>Q2&nbsp;T</th><th>Q3&nbsp;T</th><th>Q4&nbsp;T</th><th>Total</th>");r2+="</tr>";
+    $thead.append(r1,r2);
 
-  }else{ // year
-    /* row1：固定欄 + 年總 */
+  }else{ /* year */
     let r1="<tr>"+fcTitle();
-    years.forEach((y,i)=>r1+=`<th class="year-${i%4}">${y}&nbsp;Total</th>`);
-    r1+="</tr>";
+    years.forEach((y,i)=>r1+=`<th class="year-${i%4}">${y}&nbsp;Total</th>`);r1+="</tr>";
     $thead.append(r1);
   }
 }
 
 /* ---------- 表體 ---------- */
 function buildBody(list,years,viewType){
-  const $tb=$("#resultTable tbody").empty();
-  if(!list.length){
-    $tb.html("<tr><td colspan='999' class='text-center'>-- 無資料 --</td></tr>");
-    return;
-  }
+  const $tb=$("#bodyTable tbody").empty();
+  if(!list.length){$tb.html("<tr><td colspan='999' class='text-center'>-- 無資料 --</td></tr>");return;}
+
   const sb=[];
   list.forEach(r=>{
     sb.push("<tr>");
@@ -319,7 +293,6 @@ function buildBody(list,years,viewType){
     sb.push(`<td class="col-thk3">${r.Thk3||""}</td>`);
     sb.push(`<td class="col-res3">${r.Res3||""}</td>`);
 
-    /* 動態欄 */
     years.forEach(y=>{
       const p=y+"_";
       if(viewType==="month"){
@@ -342,7 +315,7 @@ function buildBody(list,years,viewType){
 
 /* ---------- 合計 ---------- */
 function updateTotals(){
-  const $rows=$("#resultTable tbody tr");
+  const $rows=$("#bodyTable tbody tr");
   if(!$rows.length) return;
   const colCnt=$rows.first().children().length;
   const sums=Array(colCnt).fill(0);
@@ -352,12 +325,11 @@ function updateTotals(){
       if(!isNaN(v)) sums[i]+=v;
     });
   });
-  const $tot=$("#resultTable thead tr.totals-row");
-  $tot.children().each(function(i){
+  $("#headerTable thead tr.totals-row").children().each(function(i){
     if(i===0) $(this).text("總計");
     else{
       const v=sums[i];
-      $(this).text(v? v.toLocaleString() : "");
+      $(this).text(v? v.toLocaleString():"");
     }
   });
 }
